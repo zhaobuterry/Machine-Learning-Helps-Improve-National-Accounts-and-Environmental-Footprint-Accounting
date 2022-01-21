@@ -1,0 +1,191 @@
+library(MLmetrics)
+library(matlib)
+library(ggplot2)
+library("xgboost")
+library("randomForest")
+library("Matrix")
+library(dplyr)
+library(Matrix)
+setwd("C:/Users/zhaob/Desktop/IO/Data")
+
+#load the original data
+BEA_2020=read.csv("BEA_2020_Industry-by-Industry.csv",header=FALSE)
+BEA_2019=read.csv("BEA_2019_Industry-by-Industry.csv",header=FALSE)
+BEA_2018=read.csv("BEA_2018_Industry-by-Industry.csv",header=FALSE)
+BEA_2017=read.csv("BEA_2017_Industry-by-Industry.csv",header=FALSE)
+BEA_2016=read.csv("BEA_2016_Industry-by-Industry.csv",header=FALSE)
+BEA_2015=read.csv("BEA_2015_Industry-by-Industry.csv",header=FALSE)
+BEA_2014=read.csv("BEA_2014_Industry-by-Industry.csv",header=FALSE)
+BEA_2013=read.csv("BEA_2013_Industry-by-Industry.csv",header=FALSE)
+BEA_2012=read.csv("BEA_2012_Industry-by-Industry.csv",header=FALSE)
+BEA_2011=read.csv("BEA_2011_Industry-by-Industry.csv",header=FALSE)
+BEA_2010=read.csv("BEA_2010_Industry-by-Industry.csv",header=FALSE)
+BEA_2009=read.csv("BEA_2009_Industry-by-Industry.csv",header=FALSE)
+BEA_2008=read.csv("BEA_2008_Industry-by-Industry.csv",header=FALSE)
+BEA_2007=read.csv("BEA_2007_Industry-by-Industry.csv",header=FALSE)
+BEA_2006=read.csv("BEA_2006_Industry-by-Industry.csv",header=FALSE)
+BEA_2005=read.csv("BEA_2005_Industry-by-Industry.csv",header=FALSE)
+BEA_2004=read.csv("BEA_2004_Industry-by-Industry.csv",header=FALSE)
+BEA_2003=read.csv("BEA_2003_Industry-by-Industry.csv",header=FALSE)
+BEA_2002=read.csv("BEA_2002_Industry-by-Industry.csv",header=FALSE)
+BEA_2001=read.csv("BEA_2001_Industry-by-Industry.csv",header=FALSE)
+BEA_2000=read.csv("BEA_2000_Industry-by-Industry.csv",header=FALSE)
+BEA_1999=read.csv("BEA_1999_Industry-by-Industry.csv",header=FALSE)
+BEA_1998=read.csv("BEA_1998_Industry-by-Industry.csv",header=FALSE)
+BEA_1997=read.csv("BEA_1997_Industry-by-Industry.csv",header=FALSE)
+
+#Industry name
+ind_name=BEA_2019[c(7:77),2]
+ind_name_summary=BEA_summary_1997[c(7:21),2]
+
+
+#matrix
+BEA_2020_matrix=as.matrix(apply(BEA_2020[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2019_matrix=as.matrix(apply(BEA_2019[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2018_matrix=as.matrix(apply(BEA_2018[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2017_matrix=as.matrix(apply(BEA_2017[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2016_matrix=as.matrix(apply(BEA_2016[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2015_matrix=as.matrix(apply(BEA_2015[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2014_matrix=as.matrix(apply(BEA_2014[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2013_matrix=as.matrix(apply(BEA_2013[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2012_matrix=as.matrix(apply(BEA_2012[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2011_matrix=as.matrix(apply(BEA_2011[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2010_matrix=as.matrix(apply(BEA_2010[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2009_matrix=as.matrix(apply(BEA_2009[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2008_matrix=as.matrix(apply(BEA_2008[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2007_matrix=as.matrix(apply(BEA_2007[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2006_matrix=as.matrix(apply(BEA_2006[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2005_matrix=as.matrix(apply(BEA_2005[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2004_matrix=as.matrix(apply(BEA_2004[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2003_matrix=as.matrix(apply(BEA_2003[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2002_matrix=as.matrix(apply(BEA_2002[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2001_matrix=as.matrix(apply(BEA_2001[c(7:77),c(3:73)], 2, as.numeric))
+BEA_2000_matrix=as.matrix(apply(BEA_2000[c(7:77),c(3:73)], 2, as.numeric))
+BEA_1999_matrix=as.matrix(apply(BEA_1999[c(7:77),c(3:73)], 2, as.numeric))
+BEA_1998_matrix=as.matrix(apply(BEA_1998[c(7:77),c(3:73)], 2, as.numeric))
+BEA_1997_matrix=as.matrix(apply(BEA_1997[c(7:77),c(3:73)], 2, as.numeric))
+
+
+###list of leontief matrix (L=(I-A)^-1)
+IO_matrix_list = list(BEA_1997_matrix, BEA_1998_matrix, BEA_1999_matrix,
+                      BEA_2000_matrix, BEA_2001_matrix, BEA_2002_matrix,
+                      BEA_2003_matrix, BEA_2004_matrix, BEA_2005_matrix,
+                      BEA_2006_matrix, BEA_2007_matrix, BEA_2008_matrix,
+                      BEA_2009_matrix, BEA_2010_matrix, BEA_2011_matrix,
+                      BEA_2012_matrix, BEA_2013_matrix, BEA_2014_matrix,
+                      BEA_2015_matrix, BEA_2016_matrix, BEA_2017_matrix,
+                      BEA_2018_matrix, BEA_2019_matrix, BEA_2020_matrix)
+
+### Calculate technical_coefficient matrix (A)
+technical_coefficient = list()
+for (i in 1:24){
+  technical_coefficient[[length(technical_coefficient)+1]] = round(-1*(inv(IO_matrix_list[[i]])-diag(71)),7)
+}
+
+
+### Calculate raw IO table (Z)
+Raw_IO = list()
+Raw_IO_output_vector = list()
+for (i in 1:24){
+  form = sprintf('BEA_%s_SUPPLY.csv', (i+1996))
+  temp = read.csv(file = form)
+  temp = temp[79, c(3:73)]
+  temp = as.vector(temp)
+  Raw_IO_output_vector[[length(Raw_IO_output_vector)+1]] = temp
+  Raw_IO[[length(Raw_IO)+1]] = technical_coefficient[[i]] %*% diag(temp)
+}
+
+### Data augmentation for raw IO
+new_IO_data = list()
+for (i in 1:22){
+  for (j in 0:99){
+    new = (1-j/100)*Raw_IO[[i]]+(j/100)*Raw_IO[[i+1]]
+    new_IO_data[[length(new_IO_data)+1]] = new
+    form = sprintf('BEA_%s_new_IO.csv', (i+j*0.01))
+    write.table(new, file = form, sep=",", row.names=FALSE, col.names=FALSE)
+  }
+}
+
+### RAS Algorithm customized
+RAS <- function(rounds, Z_0, Z_t) {
+  z = as.matrix(Z_0)
+  u = rowSums(Z_t, na.rm = FALSE, dims = 1)+1e-3
+  row_sum = rowSums(z, na.rm = FALSE, dims = 1)+1e-3
+  R = diag(u)%*%diag((1/row_sum))
+  z = R%*%z
+  v = colSums(Z_t, na.rm = FALSE, dims = 1)+1e-3
+  col_sum = colSums(z, na.rm = FALSE, dims = 1)+1e-3
+  S = diag(v)%*%diag((1/col_sum))
+  z = z%*%S
+  if (rounds>=2){
+    for (i in 2:rounds){
+      row_sum = rowSums(z, na.rm = FALSE, dims = 1)+1e-3
+      R = diag(u)%*%diag((1/row_sum))
+      z = R%*%z
+      col_sum = colSums(z, na.rm = FALSE, dims = 1)+1e-3
+      S = diag(v)%*%diag((1/col_sum))
+      z = z%*%S
+    }
+  }
+  R_2 = R2_Score(z, Z_t)
+  APE_list = vector()
+  for (m in 1:dim(Z_0)[1]){
+    for (n in 1:dim(Z_0)[2]){
+      APE = abs(Z_t[m, n]-z[m, n])/Z_t[m, n]
+      APE_list = c(APE_list, APE)
+    }
+  }
+  APE_list[is.nan(APE_list)] <- 0
+  #return(z = z)
+  return(list(z = z, R_2 = R_2, APE = median(APE_list)))
+}
+
+### Bad performance area
+history_prediction = list()
+for (i in 1:16){
+  prediction = RAS(100, Raw_IO[[i]], Raw_IO[[i+1]])
+  history_prediction[[length(history_prediction)+1]] = prediction$z
+}
+
+R2_matrix = matrix(NA, nrow = 71, ncol = 71)
+APE_matrix = matrix(NA, nrow = 71, ncol = 71)
+for (m in 1:71){
+  for (n in 1:71){
+    pre_value = vector()
+    true_value = vector()
+    APE_value = vector()
+    for (i in 1:16){
+      prediction = history_prediction[[i]]
+      true = Raw_IO[[i+1]]
+      APE = abs(prediction[m, n]-true[m, n])/true[m, n]
+      if (true[m, n]==0){APE = 0}
+      pre_value = c(pre_value, prediction[m, n])
+      true_value = c(true_value, true[m, n])
+      APE_value = c(APE_value, APE)
+    }
+    R2_matrix[m, n] = R2_Score(pre_value, true_value)
+    APE_matrix[m, n] = median(APE_value)
+    if (all(pre_value == 0)&all(true_value == 0)){
+      R2_matrix[m, n] = 1
+      APE_matrix[m, n] = 0
+    }
+  }
+}
+
+mat_R2_pos_single <- which(R2_matrix < 0.2,        
+                           arr.ind = FALSE)
+mat_R2_pos_two <- which(R2_matrix < 0.2,        
+                           arr.ind = TRUE)
+mat_R2_pos_two <- cbind(mat_R2_pos_two, mat_R2_pos_single)
+mat_APE_pos_single <- which(APE_matrix > 0.4,        
+                            arr.ind = FALSE)
+mat_APE_pos_two <- which(APE_matrix > 0.4,        
+                            arr.ind = TRUE)
+mat_APE_pos_two <- cbind(mat_APE_pos_two, mat_APE_pos_single)
+
+areas = union(mat_R2_pos_single, mat_APE_pos_single)
+areas_sub = areas[-pmatch(mat_APE_pos_single,areas)]
+
+bad_pos = rbind(mat_R2_pos_two, mat_APE_pos_two)
+bad_pos = bad_pos[!duplicated(bad_pos), ]
+write.table(bad_pos, file = "bad_pos.csv", sep=",", row.names=FALSE, col.names=FALSE)

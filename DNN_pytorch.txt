@@ -1,0 +1,258 @@
+%matplotlib inline
+import os
+import csv
+import time
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import pandas as pd
+from torch.utils.data import Dataset, DataLoader
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+### Load the area needs improvement
+bad_pos = pd.read_csv('bad_pos.csv')
+num = 1
+bad_pos_row = bad_pos.iloc[num,0]
+bad_pos_col = bad_pos.iloc[num,1]
+
+
+### Read the dataset into tensors raw IO
+T = list()
+T_response = list()
+for i in range(1,17):
+    for j in range(100):
+        raw_io = pd.read_csv('BEA_%d_new_IO.csv'%(i+j*0.01), header=None)
+        T.append(torch.as_tensor(raw_io.values))
+        T_response.append(torch.as_tensor(raw_io.iloc[bad_pos_row, bad_pos_col]))
+raw_io = pd.read_csv('BEA_17_new_IO.csv', header=None)
+T.append(torch.as_tensor(raw_io.values))
+T_response.append(torch.as_tensor(raw_io.iloc[bad_pos_row, bad_pos_col]))
+len(T)
+
+### Construct training set
+train_data_1 = torch.stack(T[:1301])
+train_data_2 = torch.stack(T[100:1401])
+train_data_3 = torch.stack(T[200:1501])
+train_response = torch.stack(T_response[300:1601])
+
+print(train_data_1.shape)
+print(train_response.shape)
+SLEN = train_response.shape[-1]
+print(SLEN)
+NUM_CHANNEL = 3
+
+### Construct validation set
+valtest_T = list()
+valtest_T_response = list()
+for i in range(1,24):
+    raw_io = pd.read_csv('BEA_%d_new_IO.csv'%i, header=None)
+    valtest_T.append(torch.as_tensor(raw_io.values))
+    valtest_T_response.append(torch.as_tensor(raw_io.iloc[bad_pos_row, bad_pos_col]))
+
+validation_data_1 = torch.stack(valtest_T[15:18])
+validation_data_2 = torch.stack(valtest_T[16:19])
+validation_data_3 = torch.stack(valtest_T[17:20])
+validation_response = torch.stack(valtest_T_response[18:21])
+
+### Construct test set
+test_data_1 = torch.stack(valtest_T[18:20])
+test_data_2 = torch.stack(valtest_T[19:21])
+test_data_3 = torch.stack(valtest_T[20:22])
+
+test_response = torch.stack(valtest_T_response[21:])
+
+
+### Parameters
+BATCH_SIZE = 32
+N_WORKERS = 0
+SE_Loss = nn.MSELoss(reduction = 'sum')
+RANDOM_SEED = 1
+torch.manual_seed(RANDOM_SEED)
+print("Seed is", RANDOM_SEED)
+dim = 71
+
+### Define class IO
+class IO_dataset(Dataset):
+    def __init__(self, df_1, df_2, df_3, result, test=False):
+        self.data_1 = df_1
+        self.data_2 = df_2
+        self.data_3 = df_3
+        self.response = result
+        self.test = test
+    
+    def __len__(self):
+        return self.data_1.shape[0]
+    
+    def __getitem__(self, idx):
+        temp = list()
+        temp.append(torch.as_tensor(self.data_1[idx].clone().detach(), dtype=torch.float))
+        temp.append(torch.as_tensor(self.data_2[idx].clone().detach(), dtype=torch.float))
+        temp.append(torch.as_tensor(self.data_3[idx].clone().detach(), dtype=torch.float))
+        matrix = torch.stack(temp[:])
+        matrix = matrix.view(NUM_CHANNEL, dim, dim)  # (channel, height, width)
+        matrix_response = torch.as_tensor(self.response[idx].clone().detach(), dtype=torch.float)
+        matrix_response = matrix_response  # (channel, height, width)
+        return (matrix, matrix_response)
+		
+		
+### Define datasets and dataloaders. 
+train_dataset = IO_dataset(train_data_1, train_data_2, train_data_3, train_response, test=False)
+valid_dataset = IO_dataset(validation_data_1, validation_data_2, validation_data_3,validation_response, test=False)
+test_dataset = IO_dataset(test_data_1, test_data_2, test_data_3, test_response, test=False)
+
+train_loader = DataLoader(dataset=train_dataset,
+                          batch_size=BATCH_SIZE,
+                          shuffle=True,
+                          num_workers=N_WORKERS)
+valid_loader = DataLoader(dataset=valid_dataset,
+                          batch_size=BATCH_SIZE,
+                          shuffle=True,
+                          num_workers=N_WORKERS)
+test_loader = DataLoader(dataset=test_dataset,
+                         batch_size=BATCH_SIZE,
+                         shuffle=False,
+                         num_workers=N_WORKERS)
+						 
+### Define accuracy evaluation metric
+from sklearn.metrics import r2_score
+def compute_accuracy(model, data_loader):
+    curr_loss, n_examples = 0., 0
+    with torch.no_grad():
+        for batch in data_loader: 
+            data = batch[0]
+            true_response = batch[1]
+            prediction = model(data) 
+            n_examples += data.size(0)
+            for m in range(data.size(0)):
+                curr_loss += SE_Loss(true_response[m], prediction[m])
+        curr_loss = curr_loss / n_examples
+        return curr_loss
+
+### Define loss function		
+def compute_epoch_loss(model, data_loader):
+    curr_loss, n_examples = 0., 0
+    with torch.no_grad():
+        for batch in data_loader:
+            data = batch[0]
+            true_response = batch[1]
+            prediction = model(data)
+            n_examples += data.size(0)
+            for m in range(data.size(0)):
+                loss = SE_Loss(true_response[m], prediction[m])
+                curr_loss += loss
+
+        curr_loss = curr_loss / n_examples
+        return curr_loss
+
+
+### Construct DNN model
+class CNN(torch.nn.Module):
+
+    def __init__(self):
+        super(CNN, self).__init__()
+        # Defining CNN module   
+        self.cnn_layers = torch.nn.Sequential(
+            torch.nn.Conv2d(3, 8, kernel_size=3, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(8, 16, kernel_size=6, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(16, 8, kernel_size=4, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.MaxPool2d(kernel_size=2),
+            torch.nn.Conv2d(8, 8, kernel_size=3, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.MaxPool2d(kernel_size=2),
+            torch.nn.Conv2d(8, 2, kernel_size=3, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.MaxPool2d(kernel_size=2)
+        )
+        # Defining MLP module   
+        self.linear_layers = torch.nn.Sequential(
+             torch.nn.Linear(8 * 8 * 2, 8 * 8),
+             torch.nn.ReLU(),
+             torch.nn.Linear(8 * 8, 4 * 4),
+             torch.nn.ReLU(),
+             torch.nn.Linear(4 * 4, 1 * 1),
+             torch.nn.ReLU()
+         )
+
+    # Defining the forward pass    
+    def forward(self, x):
+        dim = x.shape[2]
+        x = x.reshape(-1, NUM_CHANNEL, dim, dim)
+        x = self.cnn_layers(x)
+        x = torch.flatten(x, 1)
+        x = self.linear_layers(x)
+        prediction = x.reshape(-1, 1)
+        return prediction
+
+    def predict(self, x):
+        prediction = self(x)
+        return prediction
+		
+### Initialization
+model = CNN()
+model = model.to(DEVICE)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.004, betas=(0.9, 0.999))
+
+
+def run_training(model, train_loader, valid_loader, n_epochs=10):
+    start_time = time.time()
+    epoch_loss = [] 
+    for epoch in range(n_epochs):
+        model.train()
+        for batch_idx, batch in enumerate(train_loader):
+            dim = 71
+            data = batch[0]
+            true_response = batch[1]
+            #null_info = batch[1].view(-1, dim, dim)
+            
+            # FORWARD AND BACK PROP
+            prediction = model(data)
+            cost = SE_Loss(true_response, prediction)
+            
+            optimizer.zero_grad()
+            cost.backward()
+
+            # UPDATE MODEL PARAMETERS
+            optimizer.step()
+
+            # LOGGING
+            print('Epoch: %03d/%03d | Batch %03d/%03d | Cost: %.4f'
+                  % (epoch+1, n_epochs, batch_idx,
+                     len(train_loader), cost))
+
+        # we evaluate our model after each epoch.
+        model.eval()
+        cost = compute_epoch_loss(model, train_loader)
+        epoch_loss.append(cost)
+
+        train_accuracy = compute_accuracy(model, train_loader)
+        valid_accuracy = compute_accuracy(model, valid_loader)
+
+        print('Epoch: %03d/%03d Train Cost: %.4f' % (
+                epoch+1, n_epochs, cost))
+        print('Train Accuracy: %.5f | Validation Accuracy: %.5f'
+              % (train_accuracy, valid_accuracy))
+        print('Time elapsed: %.2f min' % ((time.time() - start_time)/60))
+
+    print('Total Training Time: %.2f min' % ((time.time() - start_time)/60))
+    return train_accuracy, valid_accuracy, epoch_loss
+	
+N_EPOCHS = 100
+train_accuracy, valid_accuracy, epoch_loss = run_training(model, train_loader, valid_loader, n_epochs=N_EPOCHS)
+
+plt.plot(range(len(epoch_loss)), epoch_loss)
+plt.ylabel('Loss')
+plt.xlabel('Epoch')
+plt.show()
+
+for batch in test_loader:
+    test_pred = model.predict(batch[0].view(-1, 71, 71).to(DEVICE))
+    print(batch[1])
+for i in range(2):
+    x = test_pred[i]
+    print(x)
